@@ -1,0 +1,72 @@
+name: flash-android
+
+# Personal Flash build: pushing the `flash` branch builds an arm64 Android
+# APK and uploads it as a workflow artifact. No signing secrets are used, so
+# the release build falls back to debug signing (package com.jackson.flash.dev).
+
+on:
+  push:
+    branches:
+      - flash
+  workflow_dispatch:
+
+env:
+  FLUTTER_VERSION: '3.47.6'
+  GO_VERSION: '1.27.1'
+  NDK_VERSION: r28c
+
+jobs:
+  build-android:
+    name: Build Flash Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache-dependency-path: core/go.sum
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup NDK
+        uses: nttld/setup-ndk@v1
+        id: ndk
+        with:
+          ndk-version: ${{ env.NDK_VERSION }}
+          link-to-sdk: true
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: master
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Generate Flash launcher icons
+        run: |
+          pip install pillow
+          python3 tool/flash/make_icons.py
+
+      - name: Get Flutter Dependency
+        run: flutter pub get
+
+      - name: Build APK (arm64)
+        env:
+          ANDROID_NDK_HOME: ${{ steps.ndk.outputs.ndk-path }}
+        run: dart setup.dart android --arch arm64 -v
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: flash-android-apk
+          path: ./dist
+          overwrite: true
